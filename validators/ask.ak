@@ -1,8 +1,10 @@
 use aiken/builtin.{blake2b_256, serialise_data}
+use aiken/dict
 use aiken/list
 use aiken/transaction.{InlineDatum, NoDatum, ScriptContext, Spend, Transaction}
+use aiken/transaction/credential.{Credential, Inline, VerificationKeyCredential}
 use jpg/constants
-use jpg/types.{Payout, VerificationKeyHash}
+use jpg/types.{Payout}
 use jpg/utils.{check_marketplace_payout, check_payouts, find_payout_outputs}
 
 /// A listing requires a datum that has
@@ -16,7 +18,7 @@ type Datum {
   payouts: List<Payout>,
   /// Flexible to allow discounts
   /// The key that listed the NFT
-  owner: VerificationKeyHash,
+  owner: Credential,
 }
 
 /// A user can either buy a token
@@ -35,7 +37,8 @@ validator {
   fn spend(datum: Datum, redeemer: Redeemer, ctx: ScriptContext) -> Bool {
     let ScriptContext { transaction, purpose } = ctx
 
-    let Transaction { outputs, extra_signatories, .. } = transaction
+    let Transaction { outputs, extra_signatories, withdrawals, .. } =
+      transaction
 
     // Match on the action.
     when redeemer is {
@@ -89,8 +92,10 @@ validator {
       // owner can cancel or update their listing
       // at any time.
       WithdrawOrUpdate ->
-        // is signed by owner
-        list.has(extra_signatories, datum.owner)
+        when datum.owner is {
+          VerificationKeyCredential(o) -> list.has(extra_signatories, o)
+          svh -> dict.has_key(withdrawals, Inline(svh))
+        }
     }
   }
 }
